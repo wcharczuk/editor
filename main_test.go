@@ -43,6 +43,14 @@ func TestBufferInsertRowAtEnd(t *testing.T) {
 	assert.Len(edited[1], 1)
 	assert.Equal('b', edited[1][0])
 	assert.Len(edited[2], 0)
+
+	edited = edited.InsertRowAt(3)
+	assert.Len(edited, 4)
+	assert.Equal('a', edited[0][0])
+	assert.Len(edited[1], 1)
+	assert.Equal('b', edited[1][0])
+	assert.Len(edited[2], 0)
+	assert.Len(edited[3], 0)
 }
 
 func TestInsertAtEmptyLine(t *testing.T) {

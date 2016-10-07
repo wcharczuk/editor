@@ -440,15 +440,14 @@ func (es editorState) Newline() editorState {
 	//		which pushes existing content down one line
 	// - on an empty line i just creates a new line
 
-	if len(es.buffer) == 0 {
+	if len(es.buffer[es.cursor.row]) == 0 {
 		return editorState{
-			buffer: es.buffer.InsertRowAt(es.cursor.row),
+			buffer: es.buffer.InsertRowAt(es.cursor.row + 1),
 			cursor: es.cursor.DownBeginningOfLine(),
 		}
 	}
 
-	currentRow := es.buffer[es.cursor.row]
-	if es.cursor.col == len(currentRow) { // if we're at the end of the row
+	if es.cursor.col == len(es.buffer[es.cursor.row]) { // if we're at the end of the row
 		return editorState{
 			buffer: es.buffer.InsertRowAt(es.cursor.row + 1),
 			cursor: es.cursor.DownBeginningOfLine(),
@@ -487,6 +486,21 @@ func (es editorState) Backspace() editorState {
 }
 
 func (es editorState) TrimLine() editorState {
+	if es.cursor.col == 0 {
+		if es.cursor.row == 0 {
+			return editorState{
+				buffer: es.buffer.RemoveRowAt(es.cursor.row),
+				cursor: es.cursor,
+			}
+		}
+		return editorState{
+			buffer: es.buffer.RemoveRowAt(es.cursor.row),
+			cursor: cursor{
+				row: es.cursor.row - 1,
+				col: len(es.buffer[es.cursor.row-1]),
+			},
+		}
+	}
 	return editorState{
 		buffer: es.buffer.TrimRowAt(es.cursor.row, es.cursor.col),
 		cursor: es.cursor,
@@ -581,7 +595,11 @@ func main() {
 	initialSettings, tty := initTerm()
 	defer restoreTerm(initialSettings, tty)
 
-	var state editorState
+	state := editorState{
+		buffer: [][]byte{
+			[]byte{},
+		},
+	}
 	var c = make([]byte, 1)
 	for {
 		os.Stdin.Read(c)
