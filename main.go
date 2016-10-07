@@ -77,13 +77,17 @@ func MakeRaw(fd uintptr) (*Termios, error) {
 var ANSI = ansi{
 	endOfText: byte(3),
 
-	start:     byte(2),
-	end:       byte(5),
-	backspace: byte(8),
-	tab:       byte(9),
-	lf:        byte(10),
-	vt:        byte(11),
-	cr:        byte(13),
+	start: byte(1),
+	stx:   byte(2),
+	end:   byte(5),
+	ack:   byte(6),
+	bs:    byte(8),
+	tab:   byte(9),
+	lf:    byte(10),
+	vt:    byte(11),
+	cr:    byte(13),
+	so:    byte(14),
+	dle:   byte(16),
 
 	esc:           byte(27),
 	del:           byte(127),
@@ -107,13 +111,17 @@ var ANSI = ansi{
 type ansi struct {
 	endOfText byte
 	start     byte
+	stx       byte
 	end       byte
-	backspace byte
+	ack       byte
+	bs        byte
 	tab       byte
 	lf        byte
 	vt        byte
 	cr        byte
 	esc       byte
+	so        byte
+	dle       byte
 	del       byte
 
 	left  byte
@@ -201,10 +209,28 @@ func (c cursor) Left() cursor {
 	return c
 }
 
+func (c cursor) LeftTab() cursor {
+	newCol := c.col - 4
+	if newCol < 0 {
+		newCol = 0
+	}
+	return cursor{
+		row: c.row,
+		col: newCol,
+	}
+}
+
 func (c cursor) Right() cursor {
 	return cursor{
 		row: c.row,
 		col: c.col + 1,
+	}
+}
+
+func (c cursor) RightTab() cursor {
+	return cursor{
+		row: c.row,
+		col: c.col + 4,
 	}
 }
 
@@ -340,7 +366,7 @@ func (b buffer) TrimRowAt(row, col int) buffer {
 	output := make([][]byte, len(b))
 	for y := 0; y < len(b); y++ {
 		if y == row {
-			if len(output[y]) > 0 {
+			if len(b[y]) > 0 {
 				output[y] = b[y][0:col]
 			}
 		} else {
@@ -357,7 +383,6 @@ type editorState struct {
 }
 
 func (es editorState) Write(b byte) editorState {
-	// insert a new character at the cursor
 	return editorState{
 		buffer: es.buffer.InsertCharacterAt(es.cursor.row, es.cursor.col, b),
 		cursor: es.cursor.Right(),
@@ -435,11 +460,15 @@ func (es editorState) Newline() editorState {
 func (es editorState) Backspace() editorState {
 	// nuke the character at the cursor, move the cursor to the left
 
+	// if we're at the beginning of a line
 	if es.cursor.col == 0 {
+
+		// and we're on the first line
 		if es.cursor.row == 0 {
-			return es
+			return es //just return the state
 		}
 
+		// else move up a row, to the end of the line
 		newRow := es.cursor.row - 1
 		return editorState{
 			buffer: es.buffer,
@@ -450,6 +479,7 @@ func (es editorState) Backspace() editorState {
 		}
 	}
 
+	// remove the previous character per normal.
 	return editorState{
 		buffer: es.buffer.RemoveCharacterAt(es.cursor.row, es.cursor.col-1),
 		cursor: es.cursor.Left(),
@@ -469,16 +499,23 @@ func processInput(b byte, state editorState) (editorState, error) {
 		return state, errors.New("should exit")
 	case ANSI.vt:
 		return state.TrimLine(), nil
+	case ANSI.dle:
+		return state.MoveUp(), nil
+	case ANSI.so:
+		return state.MoveDown(), nil
 	case ANSI.start:
 		return state.MoveToBeginningOfLine(), nil
+	case ANSI.stx:
+		return state.MoveLeft(), nil
+	case ANSI.ack:
+		return state.MoveRight(), nil
 	case ANSI.end:
 		return state.MoveToEndOfLine(), nil
-	case ANSI.backspace, ANSI.del:
+	case ANSI.bs, ANSI.del:
 		return state.Backspace(), nil
 	case ANSI.cr, ANSI.lf:
 		return state.Newline(), nil
 	default:
-		fmt.Printf("%#v", b)
 		return state.Write(b), nil
 	}
 }
@@ -488,12 +525,33 @@ func render(tty *os.File, state editorState) (err error) {
 	tty.Write(ANSI.MoveCursor(0, 0))
 	tty.Write(ANSI.colorReset)
 
+	c := make([]byte, 1)
+	var cursorRowTabs int
 	for row := 0; row < len(state.buffer); row++ {
 		tty.Write(ANSI.MoveCursor(row+1, 0))
-		tty.Write(state.buffer[row])
+		for col := 0; col < len(state.buffer[row]); col++ {
+			c[0] = state.buffer[row][col]
+			switch c[0] {
+			case ANSI.tab:
+				tty.Write(ANSI.Spaces(4))
+				if row == state.cursor.row {
+					cursorRowTabs++
+				}
+			default:
+				tty.Write(c)
+			}
+		}
+		if row != state.cursor.row {
+			cursorRowTabs = 0
+		}
 	}
 
-	tty.Write(ANSI.MoveCursor(state.cursor.row+1, state.cursor.col+1))
+	var extraTabSpaces int
+	if cursorRowTabs > 0 {
+		extraTabSpaces = (cursorRowTabs * 3)
+	}
+
+	tty.Write(ANSI.MoveCursor(state.cursor.row+1, state.cursor.col+1+extraTabSpaces))
 	return
 }
 

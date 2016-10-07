@@ -120,3 +120,19 @@ func TestBufferRemoveCharacterAtEnd(t *testing.T) {
 	assert.Len(edited[0], 2)
 	assert.Equal('b', edited[0][1])
 }
+
+func TestBufferTrimLineAt(t *testing.T) {
+	assert := assert.New(t)
+
+	var b buffer = [][]byte{
+		[]byte{'a', 'b', 'c', 'd', 'e'},
+		[]byte{'a', 'b', 'c', 'd', 'e'},
+		[]byte{'a', 'b', 'c', 'd', 'e'},
+	}
+
+	edited := b.TrimRowAt(1, 2)
+	assert.Len(edited, 3)
+	assert.Len(edited[0], 5)
+	assert.Len(edited[1], 2)
+	assert.Len(edited[2], 5)
+}
