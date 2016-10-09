@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func processInput(b byte, state editorState) (editorState, error) {
+func processSingleInput(b byte, state editorState) (editorState, error) {
 	switch b {
 	case ANSI.etx:
 		return state, errors.New("should exit")
@@ -22,7 +22,7 @@ func processInput(b byte, state editorState) (editorState, error) {
 		return state.MoveLeft(), nil
 	case ANSI.ack:
 		return state.MoveRight(), nil
-	case ANSI.eot:
+	case ANSI.enq:
 		return state.MoveToEndOfLine(), nil
 	case ANSI.bs, ANSI.del:
 		return state.Backspace(), nil
@@ -102,10 +102,29 @@ func main() {
 	var c = make([]byte, 1)
 	for {
 		os.Stdin.Read(c)
-		state, err = processInput(c[0], state)
-		if err != nil {
-			return
+		if c[0] == 0x1b { // special key
+			os.Stdin.Read(c)
+			if c[0] == 0x5b { // escape
+				os.Stdin.Read(c)
+				switch c[0] { // arrow direction
+				case 0x43:
+					state = state.MoveRight()
+					render(tty, state)
+					continue
+				case 0x44:
+					state = state.MoveLeft()
+					render(tty, state)
+					continue
+				default:
+					continue
+				}
+			}
+		} else { //normal input
+			state, err = processSingleInput(c[0], state)
+			if err != nil {
+				return
+			}
+			render(tty, state)
 		}
-		render(tty, state)
 	}
 }

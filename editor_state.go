@@ -21,6 +21,9 @@ func (es editorState) MoveLeft() editorState {
 }
 
 func (es editorState) MoveRight() editorState {
+	if es.cursor.col == len(es.buffer[es.cursor.row]) {
+		return es
+	}
 	return editorState{
 		buffer: es.buffer,
 		cursor: es.cursor.Right(),
@@ -28,16 +31,45 @@ func (es editorState) MoveRight() editorState {
 }
 
 func (es editorState) MoveUp() editorState {
+	if es.cursor.row == 0 {
+		return es
+	}
+
+	previousLineLength := len(es.buffer[es.cursor.row-1])
+	if es.cursor.col < previousLineLength {
+		return editorState{
+			buffer: es.buffer,
+			cursor: es.cursor.Up(),
+		}
+	}
 	return editorState{
 		buffer: es.buffer,
-		cursor: es.cursor.Up(),
+		cursor: cursor{
+			row: es.cursor.row - 1,
+			col: previousLineLength,
+		},
 	}
 }
 
 func (es editorState) MoveDown() editorState {
+	if es.cursor.row == len(es.buffer)-1 {
+		return es
+	}
+
+	nextLineLength := len(es.buffer[es.cursor.row+1])
+
+	if es.cursor.col < nextLineLength {
+		return editorState{
+			buffer: es.buffer,
+			cursor: es.cursor.Down(),
+		}
+	}
 	return editorState{
 		buffer: es.buffer,
-		cursor: es.cursor.Down(),
+		cursor: cursor{
+			row: es.cursor.row + 1,
+			col: nextLineLength,
+		},
 	}
 }
 
@@ -79,7 +111,7 @@ func (es editorState) Newline() editorState {
 	}
 
 	return editorState{
-		buffer: es.buffer.MoveAfterToNewRow(es.cursor.row, es.cursor.col),
+		buffer: es.buffer.MoveAfterToNextRow(es.cursor.row, es.cursor.col),
 		cursor: es.cursor.DownBeginningOfLine(),
 	}
 }
@@ -93,15 +125,21 @@ func (es editorState) Backspace() editorState {
 
 		// else move up a row, to the end of the line
 		previousRow := es.cursor.row - 1
-		endOfLine := len(es.buffer[previousRow]) - 1
+		endOfLine := len(es.buffer[previousRow])
 
-		if len(es.buffer[es.cursor.row]) > 0 { // if there is text on this line
-			// move up a line.
-			return editorState{}
+		if len(es.buffer[es.cursor.row]) == 0 {
+			return editorState{
+				buffer: es.buffer.RemoveRowAt(es.cursor.row),
+				cursor: cursor{
+					row: previousRow,
+					col: endOfLine,
+				},
+			}
 		}
 
+		// move up a line.
 		return editorState{
-			buffer: es.buffer.RemoveCharacterAt(previousRow, endOfLine),
+			buffer: es.buffer.MoveRowToEndOfPrevious(es.cursor.row),
 			cursor: cursor{
 				row: previousRow,
 				col: endOfLine,
@@ -117,21 +155,6 @@ func (es editorState) Backspace() editorState {
 }
 
 func (es editorState) TrimLine() editorState {
-	if es.cursor.col == 0 {
-		if es.cursor.row == 0 {
-			return editorState{
-				buffer: es.buffer.RemoveRowAt(es.cursor.row),
-				cursor: es.cursor,
-			}
-		}
-		return editorState{
-			buffer: es.buffer.RemoveRowAt(es.cursor.row),
-			cursor: cursor{
-				row: es.cursor.row - 1,
-				col: len(es.buffer[es.cursor.row-1]),
-			},
-		}
-	}
 	return editorState{
 		buffer: es.buffer.TrimRowAt(es.cursor.row, es.cursor.col),
 		cursor: es.cursor,

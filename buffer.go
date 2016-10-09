@@ -118,7 +118,25 @@ func (b buffer) TrimRowAt(row, col int) buffer {
 	return output
 }
 
-func (b buffer) MoveAfterToNewRow(row, col int) buffer {
+func (b buffer) MoveRowToEndOfPrevious(row int) buffer {
+	if len(b) < 2 {
+		return b
+	}
+
+	output := make([][]byte, len(b)-1)
+	for y := 0; y < len(b); y++ { // <= means extra row
+		if y == row {
+			output[y-1] = append(output[y-1], b[y][:]...)
+		} else if y > row {
+			output[y-1] = b[y][:]
+		} else {
+			output[y] = b[y][:]
+		}
+	}
+	return output
+}
+
+func (b buffer) MoveAfterToNextRow(row, col int) buffer {
 	if row >= len(b) {
 		return append(b, []byte{})
 	}

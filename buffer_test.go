@@ -61,7 +61,7 @@ func TestBufferMoveAfterToNextRow(t *testing.T) {
 		[]byte{'z', 'x', 'y'},
 	}
 
-	edited := b.MoveAfterToNewRow(0, 2)
+	edited := b.MoveAfterToNextRow(0, 2)
 	assert.Len(edited, 3)
 	assert.Len(edited[0], 2)
 	assert.Len(edited[1], 2)
@@ -70,6 +70,22 @@ func TestBufferMoveAfterToNextRow(t *testing.T) {
 	assert.Equal('b', edited[0][1])
 	assert.Equal('c', edited[1][0])
 	assert.Equal('z', edited[2][0])
+}
+
+func TestBufferMoveRowToEndOfPrevious(t *testing.T) {
+	assert := assert.New(t)
+
+	var b buffer = [][]byte{
+		[]byte{'a', 'b', 'c', 'd'},
+		[]byte{'z', 'x', 'y'},
+	}
+
+	edited := b.MoveRowToEndOfPrevious(1)
+	assert.Len(edited, 1)
+	assert.Len(edited[0], 7)
+
+	assert.Equal('a', edited[0][0])
+	assert.Equal('y', edited[0][6])
 }
 
 func TestInsertAtEmptyLine(t *testing.T) {
