@@ -1,5 +1,13 @@
 package main
 
+func newEditorState() editorState {
+	return editorState{
+		buffer: [][]byte{
+			[]byte{},
+		},
+	}
+}
+
 type editorState struct {
 	buffer buffer
 	scroll int //denotes scrollTop, or where we start drawing the buffer

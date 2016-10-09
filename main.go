@@ -1,9 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"log"
 	"os"
+)
+
+const (
+	byteNewLine = byte('\n')
+	byteTab     = byte('\t')
 )
 
 func processSingleInput(b byte, state editorState) (editorState, error) {
@@ -89,18 +96,103 @@ func restoreTerm(initialSettings *Termios, tty *os.File) {
 	}
 }
 
+func stateFromFile(path string) (editorState, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return editorState{}, err
+	}
+	return stateFromReader(f), nil
+}
+
+func stateFromReader(reader io.ReaderAt) editorState {
+	es := editorState{
+		buffer: [][]byte{},
+	}
+
+	var cursor int64
+	var readBuffer = make([]byte, 32)
+	var readErr error
+	var lineBuffer = bytes.NewBuffer([]byte{})
+	for readErr == nil {
+		lineBuffer.Reset()
+		cursor, readErr = readLine(reader, cursor, readBuffer, lineBuffer)
+		if readErr != nil {
+			continue
+		}
+		es.buffer = append(es.buffer, lineBuffer.Bytes())
+	}
+	return es
+}
+
+// readLine reads a file until a newline.
+func readLine(f io.ReaderAt, cursor int64, readBuffer []byte, lineBuffer *bytes.Buffer) (int64, error) {
+	// bytesRead is the return from the ReadAt function
+	// it indicates how many effective bytes we read from the stream.
+	var bytesRead int
+	// err is our primary indicator if there was an issue with the stream
+	// or if we've reached the end of the file.
+	var err error
+	// b is the byte we're reading at a time.
+	var b byte
+
+	// while we haven't hit an error (this includes EOF!)
+	for err == nil {
+		// read the stream
+		bytesRead, err = f.ReadAt(readBuffer, cursor)
+		// abort on error
+		if err != nil && err != io.EOF { //let this continue on eof
+			return cursor, err
+		}
+
+		// slurp the read buffer.
+		for readBufferIndex := 0; readBufferIndex < bytesRead; readBufferIndex++ {
+			// advance the cursor regardless of what we read out.
+			// if we read a newline, great! we'll start the next character after the newline after.
+			cursor++
+
+			// slurp the byte out of the read buffer
+			b = readBuffer[readBufferIndex]
+			if b == byteNewLine {
+				// we bifurcate here because we need to forward the eof
+				// if we read the buffer exactly right.
+				if readBufferIndex == bytesRead-1 {
+					return cursor, err
+				}
+				// otherwise the newline may have happened
+				// before the actual eof.
+				return cursor, nil
+			}
+
+			// b wasnt a newline, write it to the output buffer.
+			lineBuffer.WriteByte(b)
+		}
+	}
+	// we've reached the end of the file
+	// there may not have been a newline
+	// return what we have
+	return cursor, err
+}
+
 func main() {
 	var err error
+
+	var state editorState
+	if len(os.Args) < 2 {
+		state = newEditorState()
+	} else {
+		state, err = stateFromFile(os.Args[1])
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	initialSettings, tty := initTerm()
 	defer restoreTerm(initialSettings, tty)
 
-	state := editorState{
-		buffer: [][]byte{
-			[]byte{},
-		},
-	}
 	var c = make([]byte, 1)
 	for {
+		render(tty, state)
+
 		os.Stdin.Read(c)
 		if c[0] == 0x1b { // special key
 			os.Stdin.Read(c)
@@ -109,11 +201,9 @@ func main() {
 				switch c[0] { // arrow direction
 				case 0x43:
 					state = state.MoveRight()
-					render(tty, state)
 					continue
 				case 0x44:
 					state = state.MoveLeft()
-					render(tty, state)
 					continue
 				default:
 					continue
@@ -124,7 +214,6 @@ func main() {
 			if err != nil {
 				return
 			}
-			render(tty, state)
 		}
 	}
 }
